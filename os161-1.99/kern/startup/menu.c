@@ -54,6 +54,8 @@
 
 #define MAXMENUARGS  16
 
+extern uint32_t dbflags;
+
 // XXX this should not be in this file
 void
 getinterval(time_t s1, uint32_t ns1, time_t s2, uint32_t ns2,
@@ -396,6 +398,17 @@ cmd_kheapstats(int nargs, char **args)
 	return 0;
 }
 
+static
+int
+cmd_dbthreads(int nargs, char **args)
+{
+	(void)nargs;
+	(void)args;
+	uint32_t dbthreadsVal = 0x0010;
+	dbflags = dbthreadsVal;
+	return 0;
+}
+
 ////////////////////////////////////////
 //
 // Menus.
@@ -436,6 +449,7 @@ static const char *opsmenu[] = {
 	"[pwd]     Print current directory   ",
 	"[sync]    Sync filesystems          ",
 	"[panic]   Intentional panic         ",
+	"[dth]     Enable debug for DB_THREADS",
 	"[q]       Quit and shut down        ",
 	NULL
 };
@@ -549,6 +563,7 @@ static struct {
 	{ "q",		cmd_quit },
 	{ "exit",	cmd_quit },
 	{ "halt",	cmd_quit },
+	{ "dth",	cmd_dbthreads},
 
 #if OPT_SYNCHPROBS
 	/* in-kernel synchronization problem(s) */
