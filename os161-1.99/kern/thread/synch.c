@@ -164,6 +164,26 @@ lock_create(const char *name)
         }
         
         // add stuff here as needed
+        struct spinlock *spin;
+        spin = kmalloc(sizeof(struct spinlock));
+        if (spin == NULL) {
+                kfree(lock->lk_name);
+                kfree(lock);
+                return NULL;
+        }
+        spinlock_init(spin);
+        lock->spin = spin;
+
+        lock->lk_wchan = wchan_create(lock->lk_name);
+        if (lock->lk_wchan == NULL) {
+                kfree(lock->lk_name);
+                kfree(lock->spin);
+                kfree(lock);
+                return NULL;
+        }
+
+        lock->held = false;
+        lock->lk_holder = NULL;
         
         return lock;
 }
@@ -176,33 +196,55 @@ lock_destroy(struct lock *lock)
         // add stuff here as needed
         
         kfree(lock->lk_name);
+        kfree(lock->spin);
         kfree(lock);
 }
 
 void
 lock_acquire(struct lock *lock)
 {
-        // Write this
 
-        (void)lock;  // suppress warning until code gets written
+        if (lock_do_i_hold(lock)) {
+                panic("Tryin to acquire lock but already own it: %p\n", lock);
+        }
+
+        // Write this
+        spinlock_acquire(lock->spin);
+        while(lock->held) {
+                wchan_lock(lock->lk_wchan);
+                spinlock_release(lock->spin);
+                wchan_sleep(lock->lk_wchan);
+                spinlock_acquire(lock->spin);
+        }
+
+        lock->held = true;
+        lock->lk_holder = curthread;
+        spinlock_release(lock->spin);
 }
 
 void
 lock_release(struct lock *lock)
 {
+        if (!lock_do_i_hold(lock)) {
+                panic("Tryin to release lock but don't own it: %p\n", lock);
+        }
         // Write this
-
-        (void)lock;  // suppress warning until code gets written
+        spinlock_acquire(lock->spin);
+        lock->held = false;
+        lock->lk_holder = NULL;
+        wchan_wakeone(lock->lk_wchan);
+        spinlock_release(lock->spin);
 }
 
 bool
 lock_do_i_hold(struct lock *lock)
 {
         // Write this
-
-        (void)lock;  // suppress warning until code gets written
-
-        return true; // dummy until code gets written
+        if (lock->lk_holder == curthread) {
+                return true;
+        } else {
+                return false;
+        }
 }
 
 ////////////////////////////////////////////////////////////
