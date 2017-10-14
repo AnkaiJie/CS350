@@ -19,14 +19,6 @@
  * declare other global variables if your solution requires them.
  */
 
-/*
- * replace this with declarations of any synchronization and other variables you need here
- */
-// static struct semaphore *intersectionSem;
-// static struct lock * northLk;
-// static struct lock * southLk;
-// static struct lock * eastLk;
-// static struct lock * westLk;
 static struct lock * mainLk;
 
 static struct cv * northCv;
@@ -42,44 +34,40 @@ struct vehicle {
 };
 
 static struct queue *carQueue;
+static struct queue *carQueue1;
+static struct queue *carQueue2;
 
 //Function declarations
-struct queue *getDestQueue(Direction destination);
 struct cv *getDestCv(Direction destination);
-// struct lock *getDestLock(Direction destination);
 // 1 for straight, 2 for right, 3 for left
 int getPathType(Direction origin, Direction destination);
 // struct queue *plusXq(Direction target, int plusx);
 Direction plusXdir(Direction target, int plusx);
+struct cv *blocksFirstQueue(Direction origin, Direction destination);
 struct cv *waitOnCv(Direction origin, Direction destination);
 struct cv *plusXcv(Direction target, int plusx);
 // void printQueueDetails (struct queue *q, const char *action);
 unsigned int directionFilledBy(Direction target);
 bool directionFilled(Direction target);
+void removeFromQueue(struct vehicle *toremove);
+void printQueueDetails(struct queue *q, const char *action);
 
 
-// void printQueueDetails(struct queue *q, const char *action) {
-//   if (q == northQ) {
-//     kprintf("northQ after %s, ", action);
-//   } else if (q == southQ) {
-//     kprintf("southQ after %s, ", action);
-//   } else if (q == eastQ) {
-//     kprintf("eastQ after %s, ", action);
-//   } else if (q == westQ) {
-//     kprintf("westQ after %s, ", action);
-//   }
+void printQueueDetails(struct queue *q, const char *action) {
+  kprintf("carQ after %s, ", action);
 
-//   int length = q_len(q);
 
-//   kprintf("Length: %d, ", length);
+  int length = q_len(q);
 
-//   int peeked = -1;
-//   if (length > 0) {
-//     peeked = *((int*)q_peek(q));
-//   }
+  kprintf("Length: %d, ", length);
+  if (length > 0) {
+    struct vehicle *first = (struct vehicle *)q_peek(q);
+    kprintf("Peek: %d, %d\n", (int)first->origin, (int)first->destination);
 
-//   kprintf("Peek: %d\n", peeked);
-// }
+  }
+
+  
+}
 /* 
  * The simulation driver will call this function once before starting
  * the simulation
@@ -102,14 +90,12 @@ intersection_sync_init(void)
   eastCv = cv_create("eastCv");
   westCv = cv_create("westCv");
 
-  // northLk = lock_create("northLk");
-  // southLk = lock_create("southLk");
-  // eastLk = lock_create("eastLk");
-  // westLk = lock_create("westLk");
 
   mainLk = lock_create("mainLk");
 
-  carQueue = q_create(4);
+  carQueue1 = q_create(4);
+  carQueue2 = q_create(4);
+  carQueue = carQueue1;
 
   for (int i=0; i<4; ++i) {
     for (int j=0; j<4; ++j) {
@@ -131,23 +117,18 @@ void
 intersection_sync_cleanup(void)
 {
   /* replace this default implementation with your own implementation */
-  // KASSERT(intersectionSem != NULL);
-  // sem_destroy(intersectionSem);
   cv_destroy(northCv);
   cv_destroy(southCv);
   cv_destroy(eastCv);
   cv_destroy(westCv);
 
-  // lock_destroy(northLk);
-  // lock_destroy(southLk);
-  // lock_destroy(eastLk);
-  // lock_destroy(westLk);
-
   lock_destroy(mainLk);
+  printQueueDetails(carQueue, "inspect");
+  // q_destroy(carQueue);
 }
 
 
-struct cv *getDestCv(Direction destination) {
+struct cv *getDestCv (Direction destination) {
   struct cv *toreturn;
   switch (destination) {
     case north:
@@ -165,25 +146,6 @@ struct cv *getDestCv(Direction destination) {
   }
   return toreturn;
 }
-
-// struct lock *getDestLock(Direction destination) {
-//   struct lock *toreturn;
-//   switch (destination) {
-//     case north:
-//       toreturn = northLk;
-//       break;
-//     case east:
-//       toreturn = eastLk;
-//       break;
-//     case south:
-//       toreturn = southLk;
-//       break;
-//     case west:
-//       toreturn = westLk;
-//       break;
-//   }
-//   return toreturn;
-// }
 
 
 // 1 for straight, 2 for right, 3 for left
@@ -228,6 +190,21 @@ bool directionFilled(Direction target) {
 }
 
 
+struct cv *blocksFirstQueue(Direction origin, Direction destination) {
+  if (!q_empty(carQueue)) {
+    struct vehicle *firstCar = (struct vehicle *)q_peek(carQueue);
+    Direction fo = firstCar->origin;
+    Direction fd = firstCar->destination;
+    if (!((fo == origin) || (fd == origin && fo == destination) || 
+        (fd != destination && (getPathType(fo, fd) == 2 || getPathType(origin, destination) == 2)))) {
+      return getDestCv(fd);
+    } 
+  }
+
+  return NULL;
+}
+
+
 struct cv *waitOnCv(Direction origin, Direction destination) {
   int type = getPathType(origin, destination);
 
@@ -245,80 +222,50 @@ struct cv *waitOnCv(Direction origin, Direction destination) {
   struct cv *toreturn = NULL;
   
   if (directionFilled(destination) && directionFilledBy(destination) != origin) {
-    kprintf("Triggered 00\n");
+    // kprintf("Triggered 00\n");
     toreturn = thisCv;
   } else if (type == 1) {
     if (directionFilled(plus1dir) && directionFilledBy(plus1dir) != origin) {
-      kprintf("Triggered 11\n");
+      // kprintf("Triggered 11\n");
       toreturn = plus1cv;
     } else if (directionFilled(plus2dir) && directionFilledBy(plus2dir) != destination && directionFilledBy(plus2dir) != plus3dir) {
-      kprintf("Triggered 12\n");
+      // kprintf("Triggered 12\n");
       toreturn = plus2cv;
     } else if (directionFilled(plus3dir) && directionFilledBy(plus3dir) != destination && directionFilledBy(plus3dir) != origin) {
-      kprintf("Triggered 13\n");
+      // kprintf("Triggered 13\n");
       toreturn = plus3cv;
     }
   } else if (type == 3) {
     if (directionFilled(plus1dir) && directionFilledBy(plus1dir) != origin && directionFilledBy(plus1dir) != plus2dir) {
-      kprintf("Triggered 31\n");
+      // kprintf("Triggered 31\n");
       toreturn = plus1cv;
     } else if (directionFilled(plus2dir) && directionFilledBy(plus2dir) != origin) {
-      kprintf("Triggered 32\n");
+      // kprintf("Triggered 32\n");
       toreturn = plus2cv;
     } else if (directionFilled(plus3dir) && directionFilledBy(plus3dir) != destination) {
-      kprintf("Triggered 33\n");
+      // kprintf("Triggered 33\n");
       toreturn = plus3cv;
     }
+  } else {
+    toreturn = blocksFirstQueue(origin, destination);
   }
-
   return toreturn;
 }
 
-// struct cv *carCanGo(Direction origin, Direction destination) {
-//   int type = getPathType(origin, destination);
+void removeFromQueue(struct vehicle *toremove) {
+  struct queue *change = carQueue1;
+  if (change == carQueue) {
+    change = carQueue2;
+  }
+  while (!q_empty(carQueue)) {
+    struct vehicle *removed = (struct vehicle *)q_remhead(carQueue);
+    if (removed != toremove) {
+      q_addtail(change, removed);
+    }
+  }
 
-//   struct cv *thisCv = getDestCv(destination);
-
-//   Direction plus1dir = plusXdir(destination, 1);
-//   struct cv *plus1cv = plusXcv(destination, 1);
-
-//   Direction plus2dir = plusXdir(destination, 2);
-//   struct cv *plus2cv = plusXcv(destination, 2);
-
-//   Direction plus3dir = plusXdir(destination, 3);
-//   struct cv *plus3cv = plusXcv(destination, 3);
-
-  
-//   if (directionFilled(destination) && directionFilledBy(destination) != origin) {
-//     kprintf("Triggered 00\n");
-//     return true;
-//   } else if (type == 1) {
-//     if (directionFilled(plus1dir) && directionFilledBy(plus1dir) != origin) {
-//       kprintf("Triggered 11\n");
-//       return true;
-//     } else if (directionFilled(plus2dir) && directionFilledBy(plus2dir) != destination && directionFilledBy(plus2dir) != plus3dir) {
-//       kprintf("Triggered 12\n");
-//       return true;
-//     } else if (directionFilled(plus3dir) && directionFilledBy(plus3dir) != destination && directionFilledBy(plus3dir) != origin) {
-//       kprintf("Triggered 13\n");
-//       return true;
-//     }
-//   } else if (type == 3) {
-//     if (directionFilled(plus1dir) && directionFilledBy(plus1dir) != origin && directionFilledBy(plus1dir) != plus2dir) {
-//       kprintf("Triggered 31\n");
-//       return true;
-//     } else if (directionFilled(plus2dir) && directionFilledBy(plus2dir) != origin) {
-//       kprintf("Triggered 32\n");
-//       return true;
-//     } else if (directionFilled(plus3dir) && directionFilledBy(plus3dir) != destination) {
-//       kprintf("Triggered 33\n");
-//       return true;
-//     }
-//   }
-
-//   return false;
-// }
-
+  carQueue = change;
+}
 
 
 /*
@@ -336,30 +283,44 @@ struct cv *waitOnCv(Direction origin, Direction destination) {
 void
 intersection_before_entry(Direction origin, Direction destination) 
 {
-  /* replace this default implementation with your own implementation */
-  // (void)origin;  /* avoid compiler complaint about unused parameter */
-  // (void)destination; /* avoid compiler complaint about unused parameter */
-  // KASSERT(intersectionSem != NULL);
-  // P(intersectionSem);
 
-  // struct lock *destLock = getDestLock(destination);
-  // struct cv *destCv = getDestCv(destination);
-  // lock_acquire(destLock);
   lock_acquire(mainLk);
-
+  // kprintf("PRE ENTER: %d, %d\n", origin , destination);
   struct cv *testCv = waitOnCv(origin, destination);
-  while (testCv != NULL) {
+  struct vehicle *toadd = (struct vehicle *)kmalloc(sizeof(struct vehicle));
+  toadd->origin = origin;
+  toadd->destination = destination;
+  bool waited = false;
+  if (testCv != NULL) {
+    waited = true;
+    q_addtail(carQueue, toadd);
+    // printQueueDetails(carQueue, "add tail");
+  }
 
-    // lock_release(mainLk);
+  while (testCv != NULL) {
     cv_wait(testCv, mainLk);
-    // lock_acquire(mainLk);
+    // printQueueDetails(carQueue, "after wait");
     testCv = waitOnCv(origin, destination);
   }
 
+  // kprintf("ENTERING: %d, %d\n", origin , destination);
+  if (!q_empty(carQueue) && ((struct vehicle *)q_peek(carQueue)) == toadd) {
+    // kprintf("MATCH ADDRESS WITH FRONT: %d, %d\n", origin , destination);
+    struct vehicle *thisRem = (struct vehicle *)q_remhead(carQueue);
+    kfree(thisRem);
+  } else if (waited) {
+    // kprintf("IN QUEUE BUT NOT FRONT: %d, %d\n", origin , destination);
+    removeFromQueue(toadd);
+    kfree(toadd);
+  } else {
+    // kprintf("NOT PART OF QUEUE\n");
+    kfree(toadd);
+  }
+  
   carTracker[origin][destination] += 1;
+  // printQueueDetails(carQueue, "after ENTRANCE");
 
   lock_release(mainLk);
-  // lock_release(destLock);
   
 }
 
@@ -378,20 +339,15 @@ intersection_before_entry(Direction origin, Direction destination)
 void
 intersection_after_exit(Direction origin, Direction destination) 
 {
-  /* replace this default implementation with your own implementation */
-  // (void)origin;  /* avoid compiler complaint about unused parameter */
-  // (void)destination; /* avoid compiler complaint about unused parameter */
-  // KASSERT(intersectionSem != NULL);
-  // V(intersectionSem);
 
   lock_acquire(mainLk);
   struct cv *destCv = getDestCv(destination);
-  
+  // kprintf("LEAVING: %d, %d\n", origin , destination);
   KASSERT(carTracker[origin][destination] > 0);
   carTracker[origin][destination] -= 1;
+
   if (carTracker[origin][destination] == 0) {  
     cv_broadcast(destCv, mainLk);
   }
   lock_release(mainLk);
-  // lock_release(mainLk);
 }
