@@ -35,6 +35,7 @@
 #include <thread.h>
 #include <current.h>
 #include <syscall.h>
+#include "opt-A2.h"
 
 
 /*
@@ -108,6 +109,12 @@ syscall(struct trapframe *tf)
 		err = sys___time((userptr_t)tf->tf_a0,
 				 (userptr_t)tf->tf_a1);
 		break;
+#if OPT_A2
+		case SYS_fork:
+		err = sys_fork(tf, (pid_t *)&retval);
+		break;
+#endif
+
 #ifdef UW
 	case SYS_write:
 	  err = sys_write((int)tf->tf_a0,
@@ -168,6 +175,22 @@ syscall(struct trapframe *tf)
 	KASSERT(curthread->t_iplhigh_count == 0);
 }
 
+#if OPT_A2
+
+void enter_forked_process(struct trapframe *tf) {
+  struct trapframe childtf = *tf;
+
+  //advance program counter
+  childtf.tf_epc += 4;
+  //success code
+  childtf.tf_a3 = 0;
+  childtf.tf_v0 = 0;
+
+  
+}
+
+#else
+
 /*
  * Enter user mode for a newly forked process.
  *
@@ -181,3 +204,4 @@ enter_forked_process(struct trapframe *tf)
 {
 	(void)tf;
 }
+#endif

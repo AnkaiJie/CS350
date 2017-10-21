@@ -49,7 +49,12 @@
 #include <vnode.h>
 #include <vfs.h>
 #include <synch.h>
-#include <kern/fcntl.h>  
+#include <kern/fcntl.h>
+#include "opt-A2.h"
+
+#if OPT_A2
+#include <limits.h>
+#endif
 
 /*
  * The process for the kernel; this holds all the kernel-only threads.
@@ -68,6 +73,11 @@ static struct semaphore *proc_count_mutex;
 /* used to signal the kernel menu thread when there are no processes */
 struct semaphore *no_proc_sem;   
 #endif  // UW
+
+#ifdef OPT_A2
+int max_procs = __PID_MAX - __PID_MIN + 1;
+static volatile unsigned int pidArray[__PID_MAX];
+#endif
 
 
 
@@ -181,6 +191,17 @@ proc_destroy(struct proc *proc)
 	if (proc_count == 0) {
 	  V(no_proc_sem);
 	}
+
+#ifdef OPT_A2
+	unsigned int procid = proc->pid;
+	for (int i= 0; i<max_procs; ++i) {
+		if (pidArray[i] == procid) {
+			pidArray[i] = 0;
+			break;
+		}
+	}
+#endif
+
 	V(proc_count_mutex);
 #endif // UW
 	
@@ -208,6 +229,12 @@ proc_bootstrap(void)
     panic("could not create no_proc_sem semaphore\n");
   }
 #endif // UW 
+
+#ifdef OPT_A2
+  for (int i=0; i<__PID_MAX; ++i) {
+  	pidArray[i] = 0;
+  }
+#endif
 }
 
 /*
@@ -262,14 +289,28 @@ proc_create_runprogram(const char *name)
 	spinlock_release(&curproc->p_lock);
 #endif // UW
 
+
+
+
 #ifdef UW
 	/* increment the count of processes */
         /* we are assuming that all procs, including those created by fork(),
            are created using a call to proc_create_runprogram  */
 	P(proc_count_mutex); 
 	proc_count++;
+#ifdef OPT_A2
+	for (int i= 0; i<max_procs; ++i) {
+		if (pidArray[i] == 0) {
+			pidArray[i] = i + 2;
+			proc->pid = pidArray[i];
+			break;
+		}
+	}
+#endif
 	V(proc_count_mutex);
 #endif // UW
+
+
 
 	return proc;
 }
