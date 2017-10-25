@@ -112,7 +112,6 @@ proc_create(const char *name)
 #ifdef UW
 	proc->console = NULL;
 #endif // UW
-
 	return proc;
 }
 
@@ -200,6 +199,7 @@ proc_destroy(struct proc *proc)
 			break;
 		}
 	}
+
 #endif
 
 	V(proc_count_mutex);

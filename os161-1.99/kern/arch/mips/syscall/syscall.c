@@ -186,7 +186,10 @@ void enter_forked_process(struct trapframe *tf) {
   childtf.tf_a3 = 0;
   childtf.tf_v0 = 0;
 
-  
+  // kprintf("epc change: %d, %d", tf->tf_epc, childtf.tf_epc);
+
+  mips_usermode(&childtf);
+  kfree(tf);
 }
 
 #else

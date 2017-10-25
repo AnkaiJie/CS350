@@ -13,16 +13,15 @@
 
 
 #if OPT_A2
-
+#include <mips/trapframe.h>
 
 void thread_fork_entry(void *trap, unsigned long arg);
 
 
 
-
 /* Enter user mode. Does not return. */
-void enter_new_process(int argc, userptr_t argv, vaddr_t stackptr,
-           vaddr_t entrypoint);
+// void enter_new_process(int argc, userptr_t argv, vaddr_t stackptr,
+//            vaddr_t entrypoint);
 
 
 void thread_fork_entry(void *trap, unsigned long arg) {
@@ -43,26 +42,36 @@ int sys_fork(struct trapframe *tf, pid_t *retval) {
   struct proc *child = proc_create_runprogram(childpname);
   if (child == NULL) {
     // out of memory
+    *retval = -1;
     return 3;
   }
 
-  kprintf("\nProcess name: %s and pid: %d\n",curpname, curproc->pid);
-  kprintf("Child process name: %s and pid: %d\n", childpname, child->pid);
+  // kprintf("\nProcess name: %s and pid: %d\n",curpname, curproc->pid);
+  // kprintf("Child process name: %s and pid: %d\n", childpname, child->pid);
 
   struct addrspace *parentAddrSpace = curproc->p_addrspace;
-  struct addrspace *childAddrSpace = (struct addrspace *)kmalloc(sizeof(struct addrspace));
+  struct addrspace *childAddrSpace;
 
   int copyerr = as_copy(parentAddrSpace, &childAddrSpace);
   // any issues with as_copy
-  if (copyerr != 0) return copyerr;
+  if (copyerr != 0) {
+    *retval = -1;
+    return copyerr;
+  }
 
   // Sets address space to child process
   spinlock_acquire(&(child->p_lock));
   child->p_addrspace = childAddrSpace;
   spinlock_release(&(child->p_lock));
 
-  int tforkerr = thread_fork("fork process thread", child, thread_fork_entry, tf, 0);
-  if (tforkerr != 0) return tforkerr;
+  struct trapframe *tfcopy = (struct trapframe *)kmalloc(sizeof(struct trapframe));
+  memcpy(tfcopy, tf, sizeof(struct trapframe));
+
+  int tforkerr = thread_fork("fork process thread", child, thread_fork_entry, tfcopy, 0);
+  if (tforkerr != 0) {
+    *retval = -1;
+    return tforkerr;
+  }
 
   *retval = child->pid;
   return 0;
@@ -96,6 +105,7 @@ void sys__exit(int exitcode) {
 
   /* detach this thread from its process */
   /* note: curproc cannot be used after this call */
+  // kprintf("\nDestroying process: %s\n", curproc->p_name);
   proc_remthread(curthread);
 
   /* if this is the last user process in the system, proc_destroy()
@@ -114,7 +124,7 @@ sys_getpid(pid_t *retval)
 {
   /* for now, this is just a stub that always returns a PID of 1 */
   /* you need to fix this to make it work properly */
-  *retval = 1;
+  *retval = curproc->pid;
   return(0);
 }
 
