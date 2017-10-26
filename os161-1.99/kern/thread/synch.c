@@ -227,6 +227,7 @@ void
 lock_release(struct lock *lock)
 {
         if (!lock_do_i_hold(lock)) {
+                kprintf("IN PANIC WITH LOCK %s", lock->lk_name);
                 panic("Tryin to release lock but don't own it: %p\n", lock);
         }
         // Write this

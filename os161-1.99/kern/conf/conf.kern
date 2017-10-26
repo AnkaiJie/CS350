@@ -285,6 +285,9 @@ file      lib/uio.c
 # UW Mod
 file      lib/queue.c
 
+# A2a linkedlist
+file      lib/linkedlist.c
+
 defoption noasserts
 
 

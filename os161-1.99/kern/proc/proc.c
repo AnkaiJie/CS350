@@ -82,6 +82,18 @@ static volatile struct proc *pidArray[__PID_MAX];
 
 
 
+
+#ifdef OPT_A2
+// get proc with pid
+struct proc *get_proc(pid_t pid) {
+	KASSERT(pidArray[pid] != NULL);
+	return (struct proc *)pidArray[pid];
+}
+
+
+#endif
+
+
 /*
  * Create a proc structure.
  */
@@ -114,11 +126,17 @@ proc_create(const char *name)
 	proc->console = NULL;
 #endif // UW
 
-// #ifdef OPT_A2
-// 	for (int i=0; i<proc->childrenMax; ++i) {
-// 		children[i] = -1;
-// 	}
-// #endif
+#ifdef OPT_A2
+	proc->children = linkedlist_create();
+	KASSERT(proc->children != NULL);
+
+	proc->zombie = false;
+	proc->exitCv = cv_create(name);
+	proc->exitLock = lock_create(name);
+	proc->parentLock = lock_create(name);
+	proc->exitRetval = -1;
+	proc->parentPid = 0;
+#endif
 	return proc;
 }
 
@@ -184,6 +202,10 @@ proc_destroy(struct proc *proc)
 
 #ifdef OPT_A2
 	unsigned int procid = proc->pid;
+	linkedlist_destroy(proc->children);
+	cv_destroy(proc->exitCv);
+	lock_destroy(proc->exitLock);
+	lock_destroy(proc->parentLock);
 #endif
 
 	kfree(proc->p_name);
@@ -203,6 +225,7 @@ proc_destroy(struct proc *proc)
 	}
 #ifdef OPT_A2
 	
+	//remove the proc from the proc table
 	for (unsigned int i= min_procs; i<max_procs; ++i) {
 		if (i == procid) {
 			pidArray[i] = NULL;
@@ -215,7 +238,6 @@ proc_destroy(struct proc *proc)
 	V(proc_count_mutex);
 #endif // UW
 	
-
 }
 
 /*

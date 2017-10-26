@@ -39,6 +39,7 @@
 #include <spinlock.h>
 #include <thread.h> /* required for struct threadarray */
 #include "opt-A2.h"
+#include <linkedlist.h>
 
 
 struct addrspace;
@@ -73,6 +74,14 @@ struct proc {
 	/* add more material here as needed */
 #if OPT_A2
 	pid_t pid;
+	pid_t parentPid;
+	struct linkedlist *children;
+	struct cv *exitCv;
+	struct lock *exitLock;
+	struct lock *parentLock;
+
+	bool zombie;
+	int exitRetval;
 #endif
 };
 
@@ -83,6 +92,11 @@ extern struct proc *kproc;
 #ifdef UW
 extern struct semaphore *no_proc_sem;
 #endif // UW
+
+
+#ifdef OPT_A2
+struct proc *get_proc(pid_t pid);
+#endif
 
 /* Call once during system startup to allocate data structures. */
 void proc_bootstrap(void);
