@@ -79,7 +79,8 @@ int sys_fork(struct trapframe *tf, pid_t *retval) {
   }
 
   *retval = child->pid;
-  linkedlist_add(curproc->children, child->pid);
+  bool addChild = linkedlist_add(curproc->children, child->pid);
+  KASSERT(addChild);
 
   return 0;
 }
@@ -125,18 +126,21 @@ void sys__exit(int exitcode) {
     lock_acquire(curparentLock);
     if (prev == NULL && curChild->zombie) {
       children->head = cur->next;
+      lock_release(curparentLock);
       proc_destroy(curChild);
       cur = children->head;
     } else if (curChild->zombie) {
       prev->next = cur->next;
+      lock_release(curparentLock);
       proc_destroy(curChild);
       cur = prev->next;
     } else {
       curChild->parentPid = -1;
       prev = cur;
       cur = cur->next;
+      lock_release(curparentLock);
     }
-    lock_release(curparentLock);
+    
   }
 
   struct lock *parentLock = p->parentLock;
@@ -207,7 +211,8 @@ sys_waitpid(pid_t pid,
 
   //destroy child after
   proc_destroy(child);
-  linkedlist_remove(children, pid);
+  bool removeChild = linkedlist_remove(children, pid);
+  KASSERT(removeChild);
 
 
   result = copyout((void *)&exitstatus,status,sizeof(int));
