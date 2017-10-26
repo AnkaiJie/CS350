@@ -75,8 +75,9 @@ struct semaphore *no_proc_sem;
 #endif  // UW
 
 #ifdef OPT_A2
-int max_procs = __PID_MAX - __PID_MIN + 1;
-static volatile unsigned int pidArray[__PID_MAX];
+unsigned int max_procs = __PID_MAX;
+unsigned int min_procs = __PID_MIN;
+static volatile struct proc *pidArray[__PID_MAX];
 #endif
 
 
@@ -112,6 +113,12 @@ proc_create(const char *name)
 #ifdef UW
 	proc->console = NULL;
 #endif // UW
+
+// #ifdef OPT_A2
+// 	for (int i=0; i<proc->childrenMax; ++i) {
+// 		children[i] = -1;
+// 	}
+// #endif
 	return proc;
 }
 
@@ -175,6 +182,10 @@ proc_destroy(struct proc *proc)
 	threadarray_cleanup(&proc->p_threads);
 	spinlock_cleanup(&proc->p_lock);
 
+#ifdef OPT_A2
+	unsigned int procid = proc->pid;
+#endif
+
 	kfree(proc->p_name);
 	kfree(proc);
 
@@ -190,12 +201,11 @@ proc_destroy(struct proc *proc)
 	if (proc_count == 0) {
 	  V(no_proc_sem);
 	}
-
 #ifdef OPT_A2
-	unsigned int procid = proc->pid;
-	for (int i= 0; i<max_procs; ++i) {
-		if (pidArray[i] == procid) {
-			pidArray[i] = 0;
+	
+	for (unsigned int i= min_procs; i<max_procs; ++i) {
+		if (i == procid) {
+			pidArray[i] = NULL;
 			break;
 		}
 	}
@@ -232,7 +242,7 @@ proc_bootstrap(void)
 
 #ifdef OPT_A2
   for (int i=0; i<__PID_MAX; ++i) {
-  	pidArray[i] = 0;
+  	pidArray[i] = NULL;
   }
 #endif
 }
@@ -299,10 +309,10 @@ proc_create_runprogram(const char *name)
 	P(proc_count_mutex); 
 	proc_count++;
 #ifdef OPT_A2
-	for (int i= 0; i<max_procs; ++i) {
-		if (pidArray[i] == 0) {
-			pidArray[i] = i + 2;
-			proc->pid = pidArray[i];
+	for (unsigned int i=min_procs; i<max_procs; ++i) {
+		if (pidArray[i] == NULL) {
+			pidArray[i] = proc;
+			proc->pid = i;
 			break;
 		}
 	}
