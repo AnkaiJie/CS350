@@ -153,7 +153,7 @@ void sys__exit(int exitcode) {
     
     lock_acquire(exitlock);
     p->zombie = true;
-    p->exitRetval = exitcode;
+    p->exitRetval = _MKWAIT_EXIT(exitcode);
     cv_signal(exitcv, exitlock);
 
     lock_release(exitlock);
@@ -200,7 +200,7 @@ sys_waitpid(pid_t pid,
   }
 
   exitstatus = child->exitRetval;
-  kprintf("EXIT STATUS: %d", exitstatus);
+  // kprintf("EXIT STATUS: %d", exitstatus);
   KASSERT(exitstatus != -1);
 
   lock_release(child->exitLock);
@@ -211,6 +211,7 @@ sys_waitpid(pid_t pid,
 
 
   result = copyout((void *)&exitstatus,status,sizeof(int));
+  result = result;
   if (result) {
     return(result);
   }
