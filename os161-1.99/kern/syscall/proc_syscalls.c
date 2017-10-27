@@ -160,8 +160,8 @@ void sys__exit(int exitcode) {
     p->exitRetval = _MKWAIT_EXIT(exitcode);
     cv_signal(exitcv, exitlock);
 
-    lock_release(exitlock);
     lock_release(parentLock);
+    lock_release(exitlock);
   }
 
   thread_exit();
