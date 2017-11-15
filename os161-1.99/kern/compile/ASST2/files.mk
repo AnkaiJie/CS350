@@ -42,6 +42,7 @@ SRCS+=$(KTOP)/lib/bitmap.c
 SRCS+=$(KTOP)/lib/bswap.c
 SRCS+=$(KTOP)/lib/kgets.c
 SRCS+=$(KTOP)/lib/kprintf.c
+SRCS+=$(KTOP)/lib/linkedlist.c
 SRCS+=$(KTOP)/lib/misc.c
 SRCS+=$(KTOP)/lib/queue.c
 SRCS+=$(KTOP)/lib/uio.c
