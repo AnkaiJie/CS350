@@ -43,7 +43,7 @@ int sys_execv(const char *program, char **args, int *retval) {
     wordArgs = args[j];
   }
 
-  kprintf("In exec v. Process %d. Program Path %s. Num Args %d \n", curproc->pid, progNameCopy, numArgs);
+  // kprintf("In exec v. Process %d. Program Path %s. Num Args %d \n", curproc->pid, progNameCopy, numArgs);
   
 
   struct vnode *v;
@@ -90,18 +90,6 @@ int sys_execv(const char *program, char **args, int *retval) {
 
   // kprintf("Stack start at %x\n", stackptr);
   int added = 0;
-  // copy over arguments to user stack
-  // kprintf("Copy out numArgs: %d, size %x\n", numArgs, sizeof(int));
-  stackptr -= sizeof(int);
-  added += sizeof(int);
-  int copyResult = copyout(&numArgs, (userptr_t)stackptr, sizeof(int));
-
-  if (copyResult) {
-    *retval = copyResult;
-    return -1;
-  }
-  
-  // kprintf("Stack remaining: %x\n", stackptr);
   
   char *curWord = vargs[0];
   int i = 0;

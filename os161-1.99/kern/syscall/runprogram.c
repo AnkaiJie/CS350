@@ -44,6 +44,11 @@
 #include <vfs.h>
 #include <syscall.h>
 #include <test.h>
+#include "opt-A2.h"
+
+#if OPT_A2
+#include <copyinout.h>
+#endif
 
 /*
  * Load program "progname" and start running it in usermode.
@@ -52,7 +57,7 @@
  * Calls vfs_open on progname and thus may destroy it.
  */
 int
-runprogram(char *progname)
+runprogram(char *progname, int nargs, char ** args)
 {
 	struct addrspace *as;
 	struct vnode *v;
@@ -97,9 +102,71 @@ runprogram(char *progname)
 		return result;
 	}
 
+
+#if OPT_A2
+
+  // kprintf("Stack start at %x\n", stackptr);
+  int added = 0;
+  
+  char *curWord = args[0];
+  int i = 0;
+  vaddr_t userWordAddresses[nargs + 1];
+  // Copy all the strings to user stack
+  while (curWord) {
+    size_t wordLen = strlen(curWord) + 1;
+    // kprintf("Copy out word arg: %s, size %x\n", curWord, wordLen);
+    stackptr -= wordLen;
+    added += wordLen;
+    int wordCopyResult = copyout(curWord, (userptr_t)stackptr, wordLen);
+    if (wordCopyResult) {
+      return wordCopyResult;
+    }
+    userWordAddresses[i] = stackptr;
+    ++i;
+    
+    // kprintf("Stack remaining: %x\n", stackptr);
+    curWord = args[i];
+  }
+
+  // Prepare null end to argv array
+  userWordAddresses[nargs] = 0;
+
+  // Align for character pointers
+  stackptr -= (ROUNDUP(added, 4) - added);
+  added += (ROUNDUP(added, 4) - added);
+  // kprintf("Stack remaining after align: %x\n", stackptr);
+
+  // Copy userstack string ptrs to user stack
+  for (int j=nargs; j>=0; --j) {
+    // kprintf("Copy out word arg pointer: %x, size %x\n", userWordAddresses[j], sizeof(char *));
+    stackptr -= sizeof(char *);
+    added += sizeof(char *);
+    int wordCopyResult = copyout(&userWordAddresses[j], (userptr_t)stackptr, sizeof(char *));
+    if (wordCopyResult) {
+      return wordCopyResult;
+    }
+    
+    // kprintf("Stack remaining: %x\n", stackptr);
+    
+  }
+
+  vaddr_t userArgvPointer = stackptr;
+
+  stackptr -= (ROUNDUP(added, 8) - added);
+  // kprintf("Stack remaining after align: %x\n", stackptr);
+
+  /* Warp to user mode. */
+  // kprintf("userArgvPointer value: %x\n", userArgvPointer);
+  enter_new_process(nargs, (userptr_t)userArgvPointer,
+        stackptr, entrypoint);
+#else
 	/* Warp to user mode. */
 	enter_new_process(0 /*argc*/, NULL /*userspace addr of argv*/,
 			  stackptr, entrypoint);
+#endif
+
+
+
 	
 	/* enter_new_process does not return. */
 	panic("enter_new_process returned\n");
