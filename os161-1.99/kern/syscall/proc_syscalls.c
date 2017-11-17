@@ -11,20 +11,183 @@
 #include <copyinout.h>
 #include "opt-A2.h"
 
-
 #if OPT_A2
 #include <mips/trapframe.h>
 #include <synch.h>
+#include <vfs.h>
+#include <kern/fcntl.h>
+#include <copyinout.h>
+
+
+int sys_execv(const char *program, char **args, int *retval) {
+  (void) args;
+  *retval = 0;
+  // Copy progam path and count arguments
+  char *progNameCopy = kstrdup(program);
+  
+  int numArgs = 0;
+  char *wordArgs = args[0];
+  int j = 0;
+  while (wordArgs) {
+    ++numArgs;
+    ++j;
+    wordArgs = args[j];
+  }
+
+  j = 0;
+  wordArgs = args[0];
+  char *vargs[numArgs];
+  while (wordArgs) {
+    vargs[j] = kstrdup(wordArgs);
+    ++j;
+    wordArgs = args[j];
+  }
+
+  kprintf("In exec v. Process %d. Program Path %s. Num Args %d \n", curproc->pid, progNameCopy, numArgs);
+  
+
+  struct vnode *v;
+  int vfsOpenResult;
+
+  /* Open the file. */
+  vfsOpenResult = vfs_open(progNameCopy, O_RDONLY, 0, &v);
+  if (vfsOpenResult) {
+    *retval = vfsOpenResult;
+    return -1;
+  }
+
+  /* Create a new address space. */
+  struct addrspace *as = as_create();
+  if (as == NULL) {
+    vfs_close(v);
+    *retval = ENOMEM;
+    return -1;
+  }
+
+  vaddr_t entrypoint = 0; 
+  vaddr_t stackptr = 0;
+
+  /* Switch to it and activate it. */
+  struct addrspace *oldAddrSpace = curproc_setas(as);
+  as_activate();
+
+  /* Load the executable. */
+  int vfsLoadElfResult;
+  vfsLoadElfResult = load_elf(v, &entrypoint);
+  if (vfsLoadElfResult) {
+    vfs_close(v);
+    *retval = vfsLoadElfResult;
+    return -1;
+  }
+
+  /* Define the user stack in the address space */
+  int defineStackResult = as_define_stack(as, &stackptr);
+  if (defineStackResult) {
+    vfs_close(v);
+    *retval = defineStackResult;
+    return -1;
+  }
+
+  // kprintf("Stack start at %x\n", stackptr);
+  int added = 0;
+  // copy over arguments to user stack
+  // kprintf("Copy out numArgs: %d, size %x\n", numArgs, sizeof(int));
+  stackptr -= sizeof(int);
+  added += sizeof(int);
+  int copyResult = copyout(&numArgs, (userptr_t)stackptr, sizeof(int));
+
+  if (copyResult) {
+    *retval = copyResult;
+    return -1;
+  }
+  
+  // kprintf("Stack remaining: %x\n", stackptr);
+  
+  char *curWord = vargs[0];
+  int i = 0;
+  vaddr_t userWordAddresses[numArgs + 1];
+  // Copy all the strings to user stack
+  while (curWord) {
+    size_t wordLen = strlen(curWord) + 1;
+    // kprintf("Copy out word arg: %s, size %x\n", curWord, wordLen);
+    stackptr -= wordLen;
+    added += wordLen;
+    int wordCopyResult = copyout(curWord, (userptr_t)stackptr, wordLen);
+    if (wordCopyResult) {
+      *retval = wordCopyResult;
+      return -1;
+    }
+    userWordAddresses[i] = stackptr;
+    ++i;
+    
+    // kprintf("Stack remaining: %x\n", stackptr);
+    curWord = vargs[i];
+  }
+
+  // Prepare null end to argv array
+  userWordAddresses[numArgs] = 0;
+
+  // Align for character pointers
+  stackptr -= (ROUNDUP(added, 4) - added);
+  added += (ROUNDUP(added, 4) - added);
+  // kprintf("Stack remaining after align: %x\n", stackptr);
+
+  // Copy userstack string ptrs to user stack
+  for (int j=numArgs; j>=0; --j) {
+    // kprintf("Copy out word arg pointer: %x, size %x\n", userWordAddresses[j], sizeof(char *));
+    stackptr -= sizeof(char *);
+    added += sizeof(char *);
+    int wordCopyResult = copyout(&userWordAddresses[j], (userptr_t)stackptr, sizeof(char *));
+    if (wordCopyResult) {
+      *retval = wordCopyResult;
+      return -1;
+    }
+    
+    // kprintf("Stack remaining: %x\n", stackptr);
+    
+  }
+
+  vaddr_t userArgvPointer = stackptr;
+  // vaddr_t userArgvPointer = stackptr;
+
+  // int argvCopyResult = copyout(&userArgvPointerValue, (userptr_t)stackptr, sizeof(char **));
+  // kprintf("Copy out argv pointer: %x, size %x\n", userArgvPointerValue,  sizeof(char **));
+  // if (argvCopyResult) {
+  //   *retval = argvCopyResult;
+  //   return -1;
+  // }
+  // stackptr -= sizeof(char **);
+  // kprintf("Stack remaining: %x\n", stackptr);
+  // added += sizeof(char *);
+
+  stackptr -= (ROUNDUP(added, 8) - added);
+  // kprintf("Stack remaining after align: %x\n", stackptr);
+
+  kfree(oldAddrSpace);
+  /* Done with the file now. */
+  vfs_close(v);
+  kfree(progNameCopy);
+  for (int j=0; j<numArgs; ++j) {
+    kfree(vargs[j]);
+  }
+
+  /* Warp to user mode. */
+  // kprintf("userArgvPointer value: %x\n", userArgvPointer);
+  enter_new_process(numArgs, (userptr_t)userArgvPointer,
+        stackptr, entrypoint);
+  
+  /* enter_new_process does not return. */
+  panic("enter_new_process returned\n");
+  return EINVAL;
+}
+
+
+
 
 void thread_fork_entry(void *trap, unsigned long arg);
-
-
-
 /* Enter user mode. Does not return. */
 // void enter_new_process(int argc, userptr_t argv, vaddr_t stackptr,
 //            vaddr_t entrypoint);
-
-
 void thread_fork_entry(void *trap, unsigned long arg) {
   enter_forked_process((struct trapframe *) trap);
   (void)arg;
