@@ -45,6 +45,7 @@
 #include "opt-synchprobs.h"
 #include "opt-sfs.h"
 #include "opt-net.h"
+#include "opt-A2.h"
 
 /*
  * In-kernel menu and command dispatcher.
@@ -85,6 +86,33 @@ getinterval(time_t s1, uint32_t ns1, time_t s2, uint32_t ns2,
  * It copies the program name because runprogram destroys the copy
  * it gets by passing it to vfs_open(). 
  */
+#if OPT_A2
+static
+void
+cmd_progthread(void *ptr, unsigned long nargs)
+{
+	char **args = ptr;
+	char progname[128];
+	int result;
+
+	KASSERT(nargs >= 1);
+
+	/* Hope we fit. */
+	KASSERT(strlen(args[0]) < sizeof(progname));
+
+	strcpy(progname, args[0]);
+
+	result = runprogram(progname, nargs, args);
+	if (result) {
+		kprintf("Running program %s failed: %s\n", args[0],
+			strerror(result));
+		return;
+	}
+
+	/* NOTREACHED: runprogram only returns on error. */
+}
+#else
+
 static
 void
 cmd_progthread(void *ptr, unsigned long nargs)
@@ -113,6 +141,7 @@ cmd_progthread(void *ptr, unsigned long nargs)
 
 	/* NOTREACHED: runprogram only returns on error. */
 }
+#endif
 
 /*
  * Common code for cmd_prog and cmd_shell.
