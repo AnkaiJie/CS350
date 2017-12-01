@@ -29,7 +29,7 @@
 
 #ifndef _ADDRSPACE_H_
 #define _ADDRSPACE_H_
-
+#include "opt-A3.h"
 /*
  * Address space structure and operations.
  */
@@ -55,6 +55,11 @@ struct addrspace {
   paddr_t as_pbase2;
   size_t as_npages2;
   paddr_t as_stackpbase;
+
+#if OPT_A3
+  bool doneLoadElf;
+#endif
+
 };
 
 /*

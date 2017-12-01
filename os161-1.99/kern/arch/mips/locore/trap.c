@@ -39,6 +39,14 @@
 #include <vm.h>
 #include <mainbus.h>
 #include <syscall.h>
+#include "opt-A3.h"
+
+#if OPT_A3
+#include <addrspace.h>
+#include <synch.h>
+#include <kern/wait.h>
+#include <proc.h>
+#endif
 
 
 /* in exception.S */
@@ -108,13 +116,91 @@ kill_curthread(vaddr_t epc, unsigned code, vaddr_t vaddr)
 		break;
 	}
 
+#if OPT_A3
+	struct addrspace *as;
+	struct proc *p = curproc;
+	// pid_t pid = p->pid;
+
+	DEBUG(DB_SYSCALL,"curthread kill: (%d)\n",sig);
+
+	KASSERT(curproc->p_addrspace != NULL);
+	as_deactivate();
 	/*
-	 * You will probably want to change this.
-	 */
+	* clear p_addrspace before calling as_destroy. Otherwise if
+	* as_destroy sleeps (which is quite possible) when we
+	* come back we'll be calling as_activate on a
+	* half-destroyed address space. This tends to be
+	* messily fatal.
+	*/
+	as = curproc_setas(NULL);
+	as_destroy(as);
+
+	/* detach this thread from its process */
+	/* note: curproc cannot be used after this call */
+	// kprintf("\nDestroying process: %s\n", curproc->p_name);
+	proc_remthread(curthread);
+
+	// this removes any zombie children 
+	struct linkedlist *children = p->children;
+	struct llnode *cur = children->head;
+	struct llnode *prev = NULL;
+	while (cur != NULL) {
+	struct proc *curChild = get_proc(cur->data);
+
+	struct lock *curparentLock = curChild->parentLock;
+
+	lock_acquire(curparentLock);
+	if (prev == NULL && curChild->zombie) {
+	  children->head = cur->next;
+	  lock_release(curparentLock);
+	  proc_destroy(curChild);
+	  cur = children->head;
+	} else if (curChild->zombie) {
+	  prev->next = cur->next;
+	  lock_release(curparentLock);
+	  proc_destroy(curChild);
+	  cur = prev->next;
+	} else {
+	  curChild->parentPid = -1;
+	  prev = cur;
+	  cur = cur->next;
+	  lock_release(curparentLock);
+	}
+
+	}
+
+	struct lock *parentLock = p->parentLock;
+
+	lock_acquire(parentLock);
+	if (p->parentPid == -1 || p->parentPid == 0) {
+	//if no parent then we can just destroy
+	lock_release(parentLock);
+	proc_destroy(p);
+	} else {
+	//otherwise, become a zombie
+	struct lock *exitlock = p->exitLock;
+	struct cv *exitcv = p->exitCv;
+
+	lock_acquire(exitlock);
+	p->zombie = true;
+	p->exitRetval = _MKWAIT_SIG(sig);
+	cv_signal(exitcv, exitlock);
+
+	lock_release(parentLock);
+	lock_release(exitlock);
+	}
+
+	kprintf("Fatal user mode trap %u sig %d (%s, epc 0x%x, vaddr 0x%x)\n",
+		code, sig, trapcodenames[code], epc, vaddr);
+	thread_exit();
+
+#else
 
 	kprintf("Fatal user mode trap %u sig %d (%s, epc 0x%x, vaddr 0x%x)\n",
 		code, sig, trapcodenames[code], epc, vaddr);
 	panic("I don't know how to handle this\n");
+
+#endif
 }
 
 /*
@@ -305,7 +391,6 @@ mips_trap(struct trapframe *tf)
 	/*
 	 * Really fatal kernel-mode fault.
 	 */
-
 	kprintf("panic: Fatal exception %u (%s) in kernel mode\n", code,
 		trapcodenames[code]);
 	kprintf("panic: EPC 0x%x, exception vaddr 0x%x\n", 
