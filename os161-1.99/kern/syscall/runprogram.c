@@ -117,7 +117,7 @@ runprogram(char *progname)
   int i = 0;
   vaddr_t userWordAddresses[nargs + 1];
   // Copy all the strings to user stack
-  while (curWord) {
+  while (curWord && i < nargs) {
     size_t wordLen = strlen(curWord) + 1;
     // kprintf("Copy out word arg: %s, size %x\n", curWord, wordLen);
     stackptr -= wordLen;

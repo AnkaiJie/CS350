@@ -52,16 +52,94 @@
  */
 static struct spinlock stealmem_lock = SPINLOCK_INITIALIZER;
 
+#if OPT_A3
+struct coremapData {
+	bool open;
+	paddr_t frameAddress;
+	int contiguous;
+};
+
+struct coremapData *coremap;
+int totalFrames;
+bool coremapSetup = false;
+paddr_t low;
+#endif
+
 void
 vm_bootstrap(void)
 {
-	/* Do nothing. */
+#if OPT_A3
+	paddr_t high;
+	ram_getsize(&low, &high);
+
+	totalFrames = (high - low) / PAGE_SIZE;
+	int coreSize = totalFrames * sizeof(struct coremapData);
+	while (coreSize > PAGE_SIZE) {
+		totalFrames -= 1;
+		coreSize -= PAGE_SIZE;
+	}
+
+	coreSize = totalFrames * sizeof(struct coremapData);
+	paddr_t frameStartAddr = ROUNDUP(low + coreSize, PAGE_SIZE);
+
+	struct coremapData * entry = (struct coremapData *) PADDR_TO_KVADDR(low);
+	coremap = entry;
+	for (int i=0; i<totalFrames; ++i) {
+		struct coremapData data = {true, frameStartAddr + i*PAGE_SIZE, 1};
+		*entry = data;
+		entry += 1;
+	}
+
+	kprintf("Lo: %d, Hi: %d, %d, totalFrames: %d, frameStartAddr: %d\n", 
+		low, high, coreSize, totalFrames, frameStartAddr);
+
+	coremapSetup = true;
+
+#endif
 }
 
 static
 paddr_t
 getppages(unsigned long npages)
 {
+#if OPT_A3
+	if (coremapSetup) {
+		for (int i=0; i<totalFrames; ++i) {
+			if (coremap[i].open) {
+				bool contiguousMatch = true;
+				for (unsigned int j=0; j<npages; ++j) {
+					if (!(coremap[i + j].open)) {
+						contiguousMatch = false;
+						break;
+					}
+				}
+				
+				if (contiguousMatch) {
+					for (unsigned int j=0; j<npages; ++j) {
+						coremap[i + j].open = false;
+					}
+					coremap[i].open = false;
+					coremap[i].contiguous = npages;
+					return coremap[i].frameAddress;
+				} else {
+					i += npages - 1;
+				}
+			}
+		}
+
+		return 0;
+	} else {
+
+		paddr_t addr;
+
+		spinlock_acquire(&stealmem_lock);
+
+		addr = ram_stealmem(npages);
+		
+		spinlock_release(&stealmem_lock);
+		return addr;
+	}
+#else
 	paddr_t addr;
 
 	spinlock_acquire(&stealmem_lock);
@@ -69,7 +147,8 @@ getppages(unsigned long npages)
 	addr = ram_stealmem(npages);
 	
 	spinlock_release(&stealmem_lock);
-	return addr;
+	return addr;	
+#endif
 }
 
 /* Allocate/free some kernel-space virtual pages */
@@ -81,15 +160,27 @@ alloc_kpages(int npages)
 	if (pa==0) {
 		return 0;
 	}
+	// kprintf("Found address: %x, %x\n", pa, 
+	// 						PADDR_TO_KVADDR(pa));
 	return PADDR_TO_KVADDR(pa);
 }
 
 void 
 free_kpages(vaddr_t addr)
-{
-	/* nothing - leak the memory. */
-
-	(void)addr;
+{	
+	if (addr >= PADDR_TO_KVADDR(low)) {
+		for (int i=0; i<totalFrames; ++i) {
+			if (!coremap[i].open && PADDR_TO_KVADDR(coremap[i].frameAddress) == addr) {
+				int blocks = coremap[i].contiguous;
+				for (int j=0; j<blocks; ++j) {
+					coremap[i+j].open = true;
+					coremap[i+j].contiguous = 1;
+				}
+				break;
+			}
+		}
+	}
+	// (void)addr;
 }
 
 void
@@ -344,7 +435,10 @@ as_create(void)
 
 void
 as_destroy(struct addrspace *as)
-{
+{	
+	kfree((void *)PADDR_TO_KVADDR(as->as_pbase1));
+	kfree((void *)PADDR_TO_KVADDR(as->as_pbase2));
+	kfree((void *)PADDR_TO_KVADDR(as->as_stackpbase)) ;
 	kfree(as);
 }
 
