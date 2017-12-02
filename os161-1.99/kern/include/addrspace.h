@@ -46,7 +46,38 @@ struct vnode;
  *
  * You write this.
  */
+#if OPT_A3
 
+
+struct pageTable {
+  paddr_t * frameNumberArray;
+  int size;
+  int readable;
+  int writeable;
+  int executable;
+};
+
+
+struct addrspace {
+  vaddr_t as_vbase1;
+  
+  struct pageTable * as_pbase1_pt;
+
+  int as_npages1;
+
+  vaddr_t as_vbase2;
+
+  struct pageTable * as_pbase2_pt;
+
+  int as_npages2;
+
+  struct pageTable * as_stack_pt;
+
+  paddr_t as_stackpbase;
+
+  bool doneLoadElf;
+};
+#else
 struct addrspace {
   vaddr_t as_vbase1;
   paddr_t as_pbase1;
@@ -55,12 +86,8 @@ struct addrspace {
   paddr_t as_pbase2;
   size_t as_npages2;
   paddr_t as_stackpbase;
-
-#if OPT_A3
-  bool doneLoadElf;
-#endif
-
 };
+#endif
 
 /*
  * Functions in addrspace.c:
