@@ -258,6 +258,7 @@ vm_fault(int faulttype, vaddr_t faultaddress)
 	vtop1 = vbase1 + as->as_npages1 * PAGE_SIZE;
 	vbase2 = as->as_vbase2;
 	vtop2 = vbase2 + as->as_npages2 * PAGE_SIZE;
+	// Should start at 0x7FFF4000
 	stackbase = USERSTACK - DUMBVM_STACKPAGES * PAGE_SIZE;
 	stacktop = USERSTACK;
 

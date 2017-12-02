@@ -243,6 +243,9 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 			return ENOEXEC;
 		}
 
+#if OPT_A3
+		kprintf("Load ELF, as define REGION %x\n", (int)entrypoint);
+#endif
 		result = as_define_region(as,
 					  ph.p_vaddr, ph.p_memsz,
 					  ph.p_flags & PF_R,
@@ -252,7 +255,9 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 			return result;
 		}
 	}
-
+#if OPT_A3
+		kprintf("Load ELF, as prepare LOAD %x\n", (int)entrypoint);
+#endif
 	result = as_prepare_load(as);
 	if (result) {
 		return result;
@@ -303,6 +308,7 @@ load_elf(struct vnode *v, vaddr_t *entrypoint)
 
 	*entrypoint = eh.e_entry;
 #if OPT_A3
+	kprintf("LOAD ELF FINISHED %x\n", (int)entrypoint);
 	as->doneLoadElf = true;
 	as_activate();
 #endif
