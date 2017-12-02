@@ -95,7 +95,7 @@ int sys_execv(const char *program, char **args, int *retval) {
   int i = 0;
   vaddr_t userWordAddresses[numArgs + 1];
   // Copy all the strings to user stack
-  while (curWord) {
+  while (curWord && i < numArgs) {
     size_t wordLen = strlen(curWord) + 1;
     // kprintf("Copy out word arg: %s, size %x\n", curWord, wordLen);
     stackptr -= wordLen;
@@ -151,7 +151,8 @@ int sys_execv(const char *program, char **args, int *retval) {
   stackptr -= (ROUNDUP(added, 8) - added);
   // kprintf("Stack remaining after align: %x\n", stackptr);
 
-  kfree(oldAddrSpace);
+  as_destroy(oldAddrSpace);
+
   /* Done with the file now. */
   vfs_close(v);
   kfree(progNameCopy);
@@ -232,6 +233,9 @@ int sys_fork(struct trapframe *tf, pid_t *retval) {
   *retval = child->pid;
   bool addChild = linkedlist_add(curproc->children, child->pid);
   KASSERT(addChild);
+
+  kfree(childpname);
+  // kfree(tfcopy);
 
   return 0;
 }

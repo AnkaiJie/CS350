@@ -544,6 +544,9 @@ as_prepare_load(struct addrspace *as)
 	as_zero_region(as->as_pbase2, as->as_npages2);
 	as_zero_region(as->as_stackpbase, DUMBVM_STACKPAGES);
 
+	// kprintf("pbase1: %d, numframes %d, pbase2: %d,numframes %d, stackpbase: %d, numframes %d\n",
+	// 	as->as_pbase1,as->as_npages1,as->as_pbase2,as->as_npages1, as->as_stackpbase,DUMBVM_STACKPAGES);
+
 	return 0;
 }
 
